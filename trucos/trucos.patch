@@ -1,0 +1,287 @@
+--- a/source/game/cheats.c
++++ b/source/game/cheats.c
+@@ -54,6 +54,7 @@
+ #include "cache/cache_files.h"
+ #include "camera/director.h"
+ #include "camera/observer.h"
++#include "game/game.h"
+ #include "game/game_globals.h"
+ #include "game/players.h"
+ #include "hs/hs.h"
+@@ -195,10 +196,87 @@
+ 	return;
+ }
+ 
++/* port_config.c's: the cheats' settings (config.toml's [cheats], and the
++pause menu's SETTINGS, CHEATS) */
++int config_boolean(const char *name);
++unsigned long config_changes(void);
++
++/* port: a cheat that the player has on in the settings. Each is on for
++every tick of a game that is the player's own (not on a network: there the
++host's rules hold, cheats_network_client_enforce), put back each tick so
++that a map's scripts (b30's, around its cinematics) do not leave it off.
++Turning one off in the settings clears it once; while its setting is off,
++the console's and the maps' own use of the cheat is left alone */
++struct cheat_setting
++{
++	char const *name;
++	boolean *state;
++	boolean wanted;
++	boolean clear;
++};
++
++static struct cheat_setting cheat_settings[] =
++{
++	{ "cheats.infinite_ammo", &cheat.infinite_ammo, FALSE, FALSE },
++	{ "cheats.bottomless_clip", &cheat.bottomless_clip, FALSE, FALSE },
++	{ "cheats.super_jump", &cheat.super_jump, FALSE, FALSE },
++	{ "cheats.deathless_player", &cheat.deathless_player, FALSE, FALSE },
++	{ "cheats.omnipotent", &cheat.omnipotent, FALSE, FALSE },
++	{ "cheats.medusa", &cheat.medusa, FALSE, FALSE },
++	{ "cheats.jetpack", &cheat.jetpack, FALSE, FALSE },
++};
++
++#define NUMBER_OF_CHEAT_SETTINGS (sizeof(cheat_settings)/sizeof(cheat_settings[0]))
++
++/* the settings read again when one changed (config_changes), or when a map
++starts (force) */
++static unsigned long cheat_settings_changes = 0;
++static boolean cheat_settings_read = FALSE;
++
++static void cheats_settings_apply(
++	boolean force)
++{
++	unsigned long changes = config_changes();
++	boolean own_game = game_connection()==_game_connection_local && !network_game_distributed_client();
++	short index;
++
++	if (force || !cheat_settings_read || changes!=cheat_settings_changes)
++	{
++		cheat_settings_read = TRUE;
++		cheat_settings_changes = changes;
++		for (index = 0; index<(short)NUMBER_OF_CHEAT_SETTINGS; index++)
++		{
++			struct cheat_setting *setting = cheat_settings + index;
++			boolean wanted = config_boolean(setting->name)!=0;
++
++			if (setting->wanted && !wanted)
++				setting->clear = TRUE;
++			setting->wanted = wanted;
++		}
++	}
++
++	for (index = 0; index<(short)NUMBER_OF_CHEAT_SETTINGS; index++)
++	{
++		struct cheat_setting *setting = cheat_settings + index;
++
++		if (own_game)
++		{
++			if (setting->wanted)
++				*setting->state = TRUE;
++			else if (setting->clear)
++				*setting->state = FALSE;
++		}
++		setting->clear = FALSE;
++	}
++
++	return;
++}
++
+ void cheats_update(
+ 	void)
+ {
+ 	cheats_network_client_enforce();
++	cheats_settings_apply(FALSE);
+ 	if (cheat.controller_enabled)
+ 	{
+ 		short local_player_index;
+@@ -310,6 +388,7 @@
+ 	void)
+ {
+ 	cheats_load();
++	cheats_settings_apply(TRUE);
+ 
+ 	return;
+ }
+--- a/port/linux/src/port_config.c
++++ b/port/linux/src/port_config.c
+@@ -452,6 +452,41 @@
+ 		"profile starts at The Pillar of Autumn and opens each level as the one\n"
+ 		"before it is finished, as on the Xbox. Profiles already made keep their\n"
+ 		"progress; the console's profile_reset_campaign starts one over." },
++	{ "cheats.infinite_ammo", _config_boolean, "false", "HALO_CHEATS_INFINITE_AMMO", _environment_value, _platform_all,
++		"Munición infinita: la munición de reserva nunca se agota.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.bottomless_clip", _config_boolean, "false", "HALO_CHEATS_BOTTOMLESS_CLIP", _environment_value, _platform_all,
++		"Cargador infinito: el cargador nunca se vacía, por lo que no necesitas recargar.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.super_jump", _config_boolean, "false", "HALO_CHEATS_SUPER_JUMP", _environment_value, _platform_all,
++		"Super salto: permite saltar mucho más alto.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.deathless_player", _config_boolean, "false", "HALO_CHEATS_DEATHLESS_PLAYER", _environment_value, _platform_all,
++		"Modo dios: no mueres por disparos ni por caídas.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.omnipotent", _config_boolean, "false", "HALO_CHEATS_OMNIPOTENT", _environment_value, _platform_all,
++		"Muerte de un disparo: tus disparos eliminan al enemigo de un solo golpe.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.medusa", _config_boolean, "false", "HALO_CHEATS_MEDUSA", _environment_value, _platform_all,
++		"Medusa: los enemigos que te miran mueren.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
++	{ "cheats.jetpack", _config_boolean, "false", "HALO_CHEATS_JETPACK", _environment_value, _platform_all,
++		"Mochila propulsora: te permite volar.\n"
++		"Activado: funciona al comenzar cada nivel en partidas sin conexión de red y\n"
++		"se aplica inmediatamente al cambiarlo en el juego (menú de pausa, TRUCOS).\n"
++		"No funciona en la partida de otro anfitrión: se aplican sus reglas." },
+ 
+ 	{ "game.downloaded_maps", _config_string, "\"\"", "HALO_DOWNLOADED_MAPS", _environment_value, _platform_all,
+ 		"Maps played as downloaded ones, besides those map sharing downloaded:\n"
+--- a/port/linux/game/menu_tags.c
++++ b/port/linux/game/menu_tags.c
+@@ -1501,3 +1501,4 @@
+ #define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/player_profile_edit_screen"
++#define PAUSE_CHEATS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/network_setup/cheats/cheats_settings_screen"
+ #define PAUSE_BUTTON_SPACING 35
+ #define PAUSE_BOX_FIRST_BUTTONS 3
+@@ -1570,9 +1571,13 @@
+ 	if (model->event_handlers.count)
+ 		memcpy(handlers, model->event_handlers.address, model->event_handlers.count * sizeof(*handlers));
+ 	for (handler = 0; handler < model->event_handlers.count; handler++)
+ 	{
+-		handlers[handler].flags = FLAG(_event_handler_run_function_bit);
+-		handlers[handler].function = (short)function;
++		handlers[handler].flags = 0;
++		if (function != NONE)
++		{
++			handlers[handler].flags |= FLAG(_event_handler_run_function_bit);
++			handlers[handler].function = (short)function;
++		}
+ 		handlers[handler].script[0] = 0;
+ 		reference_set(&handlers[handler].widget_tag, UI_WIDGET_DEFINITION_TAG, widget_tag);
+ 		if (widget_tag != NONE)
+@@ -1615,30 +1620,35 @@
+ static long pause_list_patch(struct cache_file_tag_instance *instances, struct ui_widget_definition *list, long quit,
+ 	boolean host, short *growth)
+ {
+ 	struct ui_widget_child_reference *children = list->child_widgets.address;
+-	long count = list->child_widgets.count, added = host || build.coop ? 2 : 1, child;
++	long count = list->child_widgets.count, added = host || build.coop ? 3 : 2, child;
+ 	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
+ 	struct ui_widget_definition const *model = tag_get(UI_WIDGET_DEFINITION_TAG, children[quit].widget_tag.index);
+ 	long settings_widget = widget_named(PAUSE_SETTINGS_SCREEN);
++	long cheats_widget = widget_named(PAUSE_CHEATS_SCREEN);
+ 	short spacing = count >= 2 ? (short)(children[count - 1].vertical_offset - children[count - 2].vertical_offset) :
+ 		PAUSE_BUTTON_SPACING;
+-	char const *names[2];
+-	void *buttons[2];
+-	long tags[2];
++	char const *names[3];
++	void *buttons[3];
++	long tags[3];
+
+-	if (!grown || settings_widget == NONE || spacing <= 0)
++	if (!grown || settings_widget == NONE || cheats_widget == NONE || spacing <= 0)
+ 		return 0;
+ 	names[0] = "pause/settings_button";
+ 	tags[0] = next_tag();
+ 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
+ 		function_index("profile set edit begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
+-	names[1] = build.coop ? "pause/friendly_fire_button" : "pause/end_game_button";
+-	tags[1] = added > 1 ? next_tag() : NONE;
+-	buttons[1] = build.coop ?
++	names[1] = "pause/cheats_button";
++	tags[1] = next_tag();
++	buttons[1] = pause_button(instances, model, names[1], "TRUCOS",
++		NONE, build.widget_tags[cheats_widget], NULL, NONE);
++	names[2] = build.coop ? "pause/friendly_fire_button" : "pause/end_game_button";
++	tags[2] = added > 2 ? next_tag() : NONE;
++	buttons[2] = build.coop ?
+ 		pause_button(instances, model, names[2], "FRIENDLY FIRE ON",
+ 			function_index("port coop friendly fire", "pause", 0), NONE, "FRIENDLY FIRE OFF",
+ 			game_data_input_index("port coop friendly fire text", "pause", 0)) :
+ 		host ? pause_button(instances, model, names[2], "END GAME",
+ 			function_index("port pause end game", "pause", 0), NONE, NULL, NONE) : NULL;
+-	if (!buttons[0] || (added > 1 && !buttons[1]))
++	if (!buttons[0] || !buttons[1] || (added > 2 && !buttons[2]))
+ 		return 0;
+@@ -1819,13 +1819,12 @@
+ #define PAUSE_NETWORK_SCREEN \
+ 	"main_menu/settings_select/player_setup/player_profile_edit/network_setup/in_game/in_game_network_settings_screen"
+ 
+-/* Change Name's keyboard and Change Color's pictures are ui.map's, Network
+-Setup is for others' games (shown in co-op: its pages, pause_network_patch),
+-and About is nothing to it */
++/* Change Name's keyboard and Change Color's pictures are ui.map's, and About
++is nothing to it. (Network Setup stays in every game: its pages are those of
++pause_network_patch, and in a game alone its CHEATS) */
+ static char const *const pause_settings_hidden_items[] =
+ {
+ 	"main_menu/settings_select/player_setup/player_profile_edit/name_profile_item",
+-	PAUSE_NETWORK_ITEM,
+ 	"main_menu/settings_select/player_setup/player_profile_edit/color_profile_item",
+ 	"main_menu/settings_select/player_setup/player_profile_edit/about_item",
+ };
+@@ -1964,10 +1963,6 @@
+ 	{
+ 		long widget = widget_named(pause_settings_hidden_items[index]);
+ 
+-		/* (Network Setup stays in a co-op game, which is a network one or
+-		has players beside this one: build.campaign is a game alone) */
+-		if (!build.campaign && !strcmp(pause_settings_hidden_items[index], PAUSE_NETWORK_ITEM))
+-			continue;
+ 		if (widget != NONE && build.widget_tags[widget] == tag_index)
+ 			return TRUE;
+ 	}
+--- a/tools/port_settings.py
++++ b/tools/port_settings.py
+@@ -303,6 +303,8 @@
+      "Players' names above their heads, the\nscoreboard, and the text chat."),
+     ("STREAMER MODE:", "network_setup/streamer_mode",
+      "Hide offensive words in names and text from\nother players, maps and mods, as stars."),
++    ("TRUCOS:", "network_setup/cheats",
++     "Munición infinita, súper salto, modo dios y más.\nSolo en partidas sin conexión de red."),
+ ]
+ SCREENS["network_setup/map_sharing"] = {
+     "screen": "map_sharing_settings_screen", "header": _network["header"], "spacing": 30,
+@@ -348,6 +350,29 @@
+     ],
+ }
+ 
++# Network Setup's cheats (source/game/cheats.c): each is on for every tick of
++# a game that is not on a network, and set or cleared at once when changed (in
++# a game too: the pause menu's SETTINGS)
++SCREENS["network_setup/cheats"] = {
++    "screen": "cheats_settings_screen", "header": _network["header"], "spacing": 30,
++    "rows": [
++        ("MUNICIÓN INFINITA:", "cheats.infinite_ammo", ON_OFF,
++         "La munición de reserva nunca se agota.\nSolo funciona en partidas sin conexión de red.", None),
++        ("CARGADOR INFINITO:", "cheats.bottomless_clip", ON_OFF,
++         "El cargador nunca se vacía, así que no necesitas\nrecargar.", None),
++        ("SÚPER SALTO:", "cheats.super_jump", ON_OFF,
++         "Puedes saltar mucho más alto. Las caídas pueden matarte\nsi no tienes activado el MODO DIOS.", None),
++        ("MODO DIOS:", "cheats.deathless_player", ON_OFF,
++         "No puedes morir por disparos ni por caídas.", None),
++        ("MUERTE DE UN DISPARO:", "cheats.omnipotent", ON_OFF,
++         "Tus disparos eliminan al enemigo de un solo golpe.", None),
++        ("MEDUSA:", "cheats.medusa", ON_OFF,
++         "Los enemigos que te miran mueren.", None),
++        ("MOCHILA PROPULSORA:", "cheats.jetpack", ON_OFF,
++         "Te permite volar. Puede bloquear una misión:\nguarda la partida antes de usarla.", None),
++    ],
++}
++
+ # Network Setup in a game (the pause menu's SETTINGS: port/linux/game/
+ # menu_tags.c's pause_network_patch): its pages alone, without the rows that
+ # would drop the game (internet play) or are for the main menu (the router,

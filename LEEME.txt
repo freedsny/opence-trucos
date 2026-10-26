@@ -1,0 +1,22 @@
+OpenCE Halo Trucos — español
+
+CAMBIOS
+- Añade TRUCOS directamente al menú de pausa del juego.
+- Abre los trucos desde ese botón, sin pasar por Ajustes ni Network Setup.
+- Traduce los nombres y las descripciones de los siete trucos.
+- Conserva la pantalla de trucos dentro de Network Setup como ruta alternativa.
+- Incluye compilación automática de APK para Android mediante GitHub Actions.
+
+ARCHIVOS
+  .github/workflows/build-android.yml  flujo de compilación de la APK
+  trucos/trucos.patch                  cambios al código oficial y traducciones
+  trucos/regenerar_menus.py            genera las pantallas de ajustes
+
+CÓMO GENERAR LA APK
+1. Sube el contenido de este ZIP a tu repositorio GitHub freedsny/Opence-halo-trucos.
+2. Entra en la pestaña Actions.
+3. Selecciona “Compilar OpenCE con trucos (APK)” y pulsa “Run workflow”.
+4. Espera a que termine. Si todo sale bien, abre Releases y descarga el APK publicado.
+
+IMPORTANTE
+Este ZIP contiene el código de modificación y la automatización, no un APK compilado. La APK solo se considera lista después de que el flujo de compilación termine sin errores.
